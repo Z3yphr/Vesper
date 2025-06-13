@@ -6,7 +6,7 @@ CC = $(CC_OVERRIDE)$(if $(CC_OVERRIDE),,$(default_compiler))
 CFLAGS = -Wall -O2 -shared -fPIC
 
 # Output DLL/shared library name (Windows)
-TARGET = simple_hash.dll
+TARGET = src/simple_hash.dll
 SRC = src/simple_hash.c
 
 all: $(TARGET)
