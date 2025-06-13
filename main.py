@@ -104,7 +104,8 @@ def ciphers_menu():
 Classic Ciphers
 ---------------
 1. Caesar Cipher (Encrypt/Decrypt)
-2. Vigenère Cipher (Encrypt/Decrypt)
+2. Vigenère Cipher Encrypt
+3. Vigenère Cipher Decrypt
 0. Back to main menu
 """)
     choice = input("Select an option: ")
@@ -138,7 +139,19 @@ Classic Ciphers
             return
         enc = vigenere_encrypt(msg, key)
         print(f"Encrypted: {enc}")
-        dec = vigenere_decrypt(enc, key)
+        input("Press Enter to continue...")
+    elif choice == '3':
+        msg = input("Enter message: ")
+        if not msg:
+            print("Message cannot be blank.")
+            input("Press Enter to continue...")
+            return
+        key = input("Enter key: ")
+        if not key:
+            print("Key cannot be blank.")
+            input("Press Enter to continue...")
+            return
+        dec = vigenere_decrypt(msg, key)
         print(f"Decrypted: {dec}")
         input("Press Enter to continue...")
     elif choice == '0':
