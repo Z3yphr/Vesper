@@ -3,3 +3,5 @@
 *.sqlite
 *.github
 *.dll
+*__pycache__
+*.pyc

@@ -11,24 +11,36 @@ try:
     bcrypt_available = True
 except ImportError:
     bcrypt_available = False
+from src.hash_db import init_db, store_hash, get_hash
 
 def password_hashing_menu():
     print("""
 Password Hashing Utilities
 -------------------------
-1. Hash password with SHA-256 (PBKDF2)
-2. Hash password with bcrypt
+1. Hash password with SHA-256 (PBKDF2) and store in DB
+2. Verify password with SHA-256 (PBKDF2) from DB
+3. Hash password with bcrypt
 0. Back to main menu
 """)
     choice = input("Select an option: ")
     if choice == '1':
+        username = input("Enter username: ")
         pw = input("Enter password to hash: ")
         result = hash_password_sha256(pw)
-        print(f"Salt: {result['salt']}")
-        print(f"Hash: {result['hash']}")
-        check = input("Re-enter password to verify: ")
-        print("Verified!" if verify_password_sha256(check, result['salt'], result['hash']) else "Not verified.")
+        store_hash(username, result['salt'], result['hash'])
+        print(f"Hash and salt stored for user '{username}'.")
     elif choice == '2':
+        username = input("Enter username: ")
+        entry = get_hash(username)
+        if not entry:
+            print("No hash found for that username.")
+            return
+        pw = input("Enter password to verify: ")
+        if verify_password_sha256(pw, entry['salt'], entry['hash']):
+            print("Verified!")
+        else:
+            print("Not verified.")
+    elif choice == '3':
         if not bcrypt_available:
             print("bcrypt is not installed. Run 'pip install bcrypt' to use this feature.")
             return
@@ -44,6 +56,7 @@ Password Hashing Utilities
         print("Invalid option.")
 
 def main():
+    init_db()
     while True:
         print("""
 Vesper: Cybersecurity & Cryptography Practice Suite
