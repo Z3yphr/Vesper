@@ -27,7 +27,15 @@ Password Hashing Utilities
     choice = input("Select an option: ")
     if choice == '1':
         username = input("Enter username: ")
+        if not username:
+            print("Username cannot be blank.")
+            input("Press Enter to continue...")
+            return
         pw = input("Enter password to hash: ")
+        if not pw:
+            print("Password cannot be blank.")
+            input("Press Enter to continue...")
+            return
         result = hash_password_sha256(pw)
         if store_hash(username, result['salt'], result['hash']):
             print(f"Hash and salt stored for user '{username}'.")
@@ -36,12 +44,20 @@ Password Hashing Utilities
         input("Press Enter to continue...")
     elif choice == '2':
         username = input("Enter username: ")
+        if not username:
+            print("Username cannot be blank.")
+            input("Press Enter to continue...")
+            return
         entry = get_hash(username)
         if not entry:
             print("No hash found for that username.")
             input("Press Enter to continue...")
             return
         pw = input("Enter password to verify: ")
+        if not pw:
+            print("Password cannot be blank.")
+            input("Press Enter to continue...")
+            return
         if entry['algo'] == 'sha256':
             verified = verify_password_sha256(pw, entry['salt'], entry['hash'])
         elif entry['algo'] == 'bcrypt' and bcrypt_available:
@@ -62,7 +78,15 @@ Password Hashing Utilities
             input("Press Enter to continue...")
             return
         username = input("Enter username: ")
+        if not username:
+            print("Username cannot be blank.")
+            input("Press Enter to continue...")
+            return
         pw = input("Enter password to hash (bcrypt): ")
+        if not pw:
+            print("Password cannot be blank.")
+            input("Press Enter to continue...")
+            return
         result = hash_password_bcrypt(pw)
         if store_hash(username, result['salt'], result['hash'], algo='bcrypt'):
             print(f"bcrypt hash and salt stored for user '{username}'.")
@@ -86,7 +110,16 @@ Classic Ciphers
     choice = input("Select an option: ")
     if choice == '1':
         msg = input("Enter message: ")
-        shift = int(input("Enter shift: "))
+        if not msg:
+            print("Message cannot be blank.")
+            input("Press Enter to continue...")
+            return
+        try:
+            shift = int(input("Enter shift: "))
+        except ValueError:
+            print("Shift must be an integer.")
+            input("Press Enter to continue...")
+            return
         enc = caesar_encrypt(msg, shift)
         print(f"Encrypted: {enc}")
         dec = caesar_decrypt(enc, shift)
@@ -94,7 +127,15 @@ Classic Ciphers
         input("Press Enter to continue...")
     elif choice == '2':
         msg = input("Enter message: ")
+        if not msg:
+            print("Message cannot be blank.")
+            input("Press Enter to continue...")
+            return
         key = input("Enter key: ")
+        if not key:
+            print("Key cannot be blank.")
+            input("Press Enter to continue...")
+            return
         enc = vigenere_encrypt(msg, key)
         print(f"Encrypted: {enc}")
         dec = vigenere_decrypt(enc, key)

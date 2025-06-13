@@ -5,13 +5,15 @@ def vigenere_encrypt(text: str, key: str) -> str:
     result = []
     key = key.lower()
     key_len = len(key)
-    for i, char in enumerate(text):
+    key_index = 0
+    for char in text:
         if char.isalpha():
-            k = ord(key[i % key_len]) - 97
+            k = ord(key[key_index % key_len]) - 97
             if char.isupper():
                 result.append(chr((ord(char) - 65 + k) % 26 + 65))
             else:
                 result.append(chr((ord(char) - 97 + k) % 26 + 97))
+            key_index += 1
         else:
             result.append(char)
     return ''.join(result)
@@ -20,13 +22,15 @@ def vigenere_decrypt(text: str, key: str) -> str:
     result = []
     key = key.lower()
     key_len = len(key)
-    for i, char in enumerate(text):
+    key_index = 0
+    for char in text:
         if char.isalpha():
-            k = ord(key[i % key_len]) - 97
+            k = ord(key[key_index % key_len]) - 97
             if char.isupper():
                 result.append(chr((ord(char) - 65 - k) % 26 + 65))
             else:
                 result.append(chr((ord(char) - 97 - k) % 26 + 97))
+            key_index += 1
         else:
             result.append(char)
     return ''.join(result)
