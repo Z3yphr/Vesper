@@ -12,6 +12,8 @@ try:
 except ImportError:
     bcrypt_available = False
 from src.hash_db import init_db, store_hash, get_hash
+from src.caesar_cipher import caesar_encrypt, caesar_decrypt
+from src.vigenere_cipher import vigenere_encrypt, vigenere_decrypt
 
 def password_hashing_menu():
     print("""
@@ -73,6 +75,37 @@ Password Hashing Utilities
         print("Invalid option.")
         input("Press Enter to continue...")
 
+def ciphers_menu():
+    print("""
+Classic Ciphers
+---------------
+1. Caesar Cipher (Encrypt/Decrypt)
+2. Vigenère Cipher (Encrypt/Decrypt)
+0. Back to main menu
+""")
+    choice = input("Select an option: ")
+    if choice == '1':
+        msg = input("Enter message: ")
+        shift = int(input("Enter shift: "))
+        enc = caesar_encrypt(msg, shift)
+        print(f"Encrypted: {enc}")
+        dec = caesar_decrypt(enc, shift)
+        print(f"Decrypted: {dec}")
+        input("Press Enter to continue...")
+    elif choice == '2':
+        msg = input("Enter message: ")
+        key = input("Enter key: ")
+        enc = vigenere_encrypt(msg, key)
+        print(f"Encrypted: {enc}")
+        dec = vigenere_decrypt(enc, key)
+        print(f"Decrypted: {dec}")
+        input("Press Enter to continue...")
+    elif choice == '0':
+        return
+    else:
+        print("Invalid option.")
+        input("Press Enter to continue...")
+
 def main():
     init_db()
     while True:
@@ -91,6 +124,8 @@ Vesper: Cybersecurity & Cryptography Practice Suite
             sys.exit(0)
         elif choice == '1':
             password_hashing_menu()
+        elif choice == '3':
+            ciphers_menu()
         else:
             print("Feature coming soon! (This is a starter template.)")
             input("Press Enter to continue...")
