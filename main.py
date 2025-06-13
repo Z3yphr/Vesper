@@ -18,8 +18,8 @@ def password_hashing_menu():
 Password Hashing Utilities
 -------------------------
 1. Hash password with SHA-256 (PBKDF2) and store in DB
-2. Verify password with SHA-256 (PBKDF2) from DB
-3. Hash password with bcrypt
+2. Verify password from DB (SHA-256 or bcrypt)
+3. Hash password with bcrypt and store in DB
 0. Back to main menu
 """)
     choice = input("Select an option: ")
@@ -27,33 +27,51 @@ Password Hashing Utilities
         username = input("Enter username: ")
         pw = input("Enter password to hash: ")
         result = hash_password_sha256(pw)
-        store_hash(username, result['salt'], result['hash'])
-        print(f"Hash and salt stored for user '{username}'.")
+        if store_hash(username, result['salt'], result['hash']):
+            print(f"Hash and salt stored for user '{username}'.")
+        else:
+            print(f"Username '{username}' is already taken. Please choose another.")
+        input("Press Enter to continue...")
     elif choice == '2':
         username = input("Enter username: ")
         entry = get_hash(username)
         if not entry:
             print("No hash found for that username.")
+            input("Press Enter to continue...")
             return
         pw = input("Enter password to verify: ")
-        if verify_password_sha256(pw, entry['salt'], entry['hash']):
-            print("Verified!")
+        if entry['algo'] == 'sha256':
+            verified = verify_password_sha256(pw, entry['salt'], entry['hash'])
+        elif entry['algo'] == 'bcrypt' and bcrypt_available:
+            verified = verify_password_bcrypt(pw, entry['hash'])
+        elif entry['algo'] == 'bcrypt' and not bcrypt_available:
+            print("bcrypt is not installed. Cannot verify this password.")
+            input("Press Enter to continue...")
+            return
         else:
-            print("Not verified.")
+            print(f"Unknown algorithm: {entry['algo']}")
+            input("Press Enter to continue...")
+            return
+        print("Verified!" if verified else "Not verified.")
+        input("Press Enter to continue...")
     elif choice == '3':
         if not bcrypt_available:
             print("bcrypt is not installed. Run 'pip install bcrypt' to use this feature.")
+            input("Press Enter to continue...")
             return
+        username = input("Enter username: ")
         pw = input("Enter password to hash (bcrypt): ")
         result = hash_password_bcrypt(pw)
-        print(f"Salt: {result['salt']}")
-        print(f"Hash: {result['hash']}")
-        check = input("Re-enter password to verify: ")
-        print("Verified!" if verify_password_bcrypt(check, result['hash']) else "Not verified.")
+        if store_hash(username, result['salt'], result['hash'], algo='bcrypt'):
+            print(f"bcrypt hash and salt stored for user '{username}'.")
+        else:
+            print(f"Username '{username}' is already taken. Please choose another.")
+        input("Press Enter to continue...")
     elif choice == '0':
         return
     else:
         print("Invalid option.")
+        input("Press Enter to continue...")
 
 def main():
     init_db()
@@ -75,6 +93,7 @@ Vesper: Cybersecurity & Cryptography Practice Suite
             password_hashing_menu()
         else:
             print("Feature coming soon! (This is a starter template.)")
+            input("Press Enter to continue...")
 
 if __name__ == "__main__":
     main()

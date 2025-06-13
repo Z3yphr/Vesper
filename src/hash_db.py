@@ -17,27 +17,33 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE,
             salt TEXT,
-            hash TEXT
+            hash TEXT,
+            algo TEXT DEFAULT 'sha256'
         )
     """)
     conn.commit()
     conn.close()
 
-def store_hash(username: str, salt: str, hash_: str):
+def store_hash(username: str, salt: str, hash_: str, algo: str = 'sha256') -> bool:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("REPLACE INTO password_hashes (username, salt, hash) VALUES (?, ?, ?)", (username, salt, hash_))
-    conn.commit()
-    conn.close()
+    try:
+        c.execute("INSERT INTO password_hashes (username, salt, hash, algo) VALUES (?, ?, ?, ?)", (username, salt, hash_, algo))
+        conn.commit()
+        conn.close()
+        return True
+    except sqlite3.IntegrityError:
+        conn.close()
+        return False
 
 def get_hash(username: str) -> Optional[dict]:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT salt, hash FROM password_hashes WHERE username = ?", (username,))
+    c.execute("SELECT salt, hash, algo FROM password_hashes WHERE username = ?", (username,))
     row = c.fetchone()
     conn.close()
     if row:
-        return {'salt': row[0], 'hash': row[1]}
+        return {'salt': row[0], 'hash': row[1], 'algo': row[2]}
     return None
 
 if __name__ == "__main__":
