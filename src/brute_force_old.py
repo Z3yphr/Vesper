@@ -1,13 +1,14 @@
 """
-brute_force.py - Comprehensive brute-force attack module for Vesper
+brute_force.py - Brute-force attack module for Vesper
 
-Provides single-threaded and multithreaded brute-force attacks with advanced progress tracking.
+Provides functions for brute-force attacks on password hashes.
 """
 import itertools
 import string
 import sys
 import time
 import threading
+import queue
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from src.hash_utils import hash_password_sha256, verify_password_sha256
 from src.progress_indicators import ThreadSafeProgressTracker, ProgressMonitor, SimpleSpinner
@@ -17,6 +18,20 @@ try:
 except ImportError:
     bcrypt_available = False
 
+def show_progress_bar(current: int, total: int, width: int = 50) -> str:
+    """Generate a progress bar string."""
+    progress = current / total
+    filled = int(width * progress)
+    bar = '█' * filled + '░' * (width - filled)
+    percentage = progress * 100
+    return f"[{bar}] {percentage:.1f}% ({current:,}/{total:,})"
+
+def show_spinner(attempts: int) -> None:
+    """Show a spinning animation with attempt count."""
+    spinner_chars = ['|', '/', '-', '\\']
+    spinner = spinner_chars[attempts % 4]
+    sys.stdout.write(f"\r{spinner} Trying passwords... {attempts:,} attempts")
+    sys.stdout.flush()
 
 class BruteForceWorker:
     """Worker class for multithreaded brute-force attacks."""
@@ -27,6 +42,7 @@ class BruteForceWorker:
         self.algo = algo
         self.found = False
         self.result = None
+        self.attempts = 0
         self.lock = threading.Lock()
 
     def test_password_batch(self, password_batch: list[str]) -> tuple[str | None, int]:
@@ -35,9 +51,9 @@ class BruteForceWorker:
         for password in password_batch:
             if self.found:  # Another thread found it
                 return None, local_attempts
-
+                
             local_attempts += 1
-
+            
             # Test password
             if self.algo == 'sha256' and self.salt:
                 if verify_password_sha256(password, self.salt, self.target_hash):
@@ -53,14 +69,65 @@ class BruteForceWorker:
                             self.found = True
                             self.result = password
                     return password, local_attempts
-
+        
+        # Update global attempt counter
+        with self.lock:
+            self.attempts += local_attempts
+            
         return None, local_attempts
 
+class ProgressTracker:
+    """Thread-safe progress tracking for multithreaded operations."""
+    
+    def __init__(self, total_combinations: int, num_threads: int):
+        self.total_combinations = total_combinations
+        self.num_threads = num_threads
+        self.attempts = 0
+        self.start_time = time.time()
+        self.last_update = 0
+        self.lock = threading.Lock()
+        self.active = True
+        
+    def update_progress(self, new_attempts: int):
+        """Update progress with new attempt count."""
+        with self.lock:
+            self.attempts += new_attempts
+            
+    def should_display(self) -> bool:
+        """Check if progress should be displayed (to avoid spam)."""
+        current_time = time.time()
+        with self.lock:
+            if current_time - self.last_update >= 0.5:  # Update every 0.5 seconds
+                self.last_update = current_time
+                return True
+        return False
+        
+    def get_progress_string(self) -> str:
+        """Get current progress as a formatted string."""
+        with self.lock:
+            elapsed = time.time() - self.start_time
+            rate = self.attempts / elapsed if elapsed > 0 else 0
+            
+            if self.total_combinations > 10000:
+                progress_bar = show_progress_bar(self.attempts, self.total_combinations)
+                return f"\r{progress_bar} | {rate:.0f} pwd/s | {self.num_threads} threads"
+            else:
+                spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+                spinner = spinner_chars[int(time.time() * 10) % len(spinner_chars)]
+                return f"\r{spinner} Testing passwords... {self.attempts:,} attempts | {rate:.0f} pwd/s | {self.num_threads} threads"
 
-def brute_force_attack(target_hash: str, salt: str | None = None, algo: str = 'sha256',
-                      max_length: int = 4, charset: str | None = None):
+def progress_monitor(tracker: ProgressTracker, worker: BruteForceWorker):
+    """Background thread to display progress updates."""
+    while tracker.active and not worker.found:
+        if tracker.should_display():
+            progress_str = tracker.get_progress_string()
+            sys.stdout.write(progress_str)
+            sys.stdout.flush()
+        time.sleep(0.1)  # Small sleep to prevent excessive CPU usage
+
+def brute_force_attack(target_hash: str, salt: str | None = None, algo: str = 'sha256', max_length: int = 4, charset: str | None = None):
     """
-    Single-threaded brute-force attack with progress indicators.
+    Perform a brute-force attack on a hash with simple progress indicators.
 
     Args:
         target_hash: The hash to crack
@@ -75,19 +142,18 @@ def brute_force_attack(target_hash: str, salt: str | None = None, algo: str = 's
     if charset is None:
         charset = string.ascii_lowercase + string.digits
 
-    print(f"🚀 Starting single-threaded brute-force attack")
-    print(f"📏 Max length: {max_length} | 🔤 Charset: {len(charset)} chars")
+    print(f"🚀 Starting brute-force attack (max length: {max_length}, charset: {len(charset)} chars)")
 
     attempts = 0
     total_combinations = sum(len(charset) ** length for length in range(1, max_length + 1))
 
-    print(f"🔢 Total combinations: {total_combinations:,}")
-
-    # Use appropriate progress tracking
+    print(f"🔢 Total combinations to try: {total_combinations:,}")
+    
+    # Use simple progress tracking for single-threaded
     progress_tracker = None
     progress_monitor = None
     spinner = None
-
+    
     if total_combinations > 1000:
         progress_tracker = ThreadSafeProgressTracker(total_combinations, 1, update_interval=1.0)
         progress_monitor = ProgressMonitor(progress_tracker)
@@ -102,7 +168,7 @@ def brute_force_attack(target_hash: str, salt: str | None = None, algo: str = 's
     try:
         for length in range(1, max_length + 1):
             length_combinations = len(charset) ** length
-            print(f"\n🔍 Trying passwords of length {length} ({length_combinations:,} combinations)")
+            print(f"\n🔍 Trying passwords of length {length} ({length_combinations:,} combinations):")
 
             for i, candidate in enumerate(itertools.product(charset, repeat=length)):
                 password = ''.join(candidate)
@@ -147,11 +213,10 @@ def brute_force_attack(target_hash: str, salt: str | None = None, algo: str = 's
     print(f"🔢 Total attempts: {attempts:,}")
     return None
 
-
 def brute_force_attack_threaded(target_hash: str, salt: str | None = None, algo: str = 'sha256',
                                max_length: int = 4, charset: str | None = None, num_threads: int = 4):
     """
-    Basic multithreaded brute-force attack.
+    Multithreaded brute-force attack on a hash with enhanced progress tracking.
 
     Args:
         target_hash: The hash to crack
@@ -167,32 +232,33 @@ def brute_force_attack_threaded(target_hash: str, salt: str | None = None, algo:
     if charset is None:
         charset = string.ascii_lowercase + string.digits
 
-    print(f"🚀 Starting basic multithreaded brute-force attack ({num_threads} threads)")
-    print(f"📏 Max length: {max_length} | 🔤 Charset: {len(charset)} chars")
+    print(f"🚀 Starting MULTITHREADED brute-force attack ({num_threads} threads)")
+    print(f"📊 Max length: {max_length}, charset: {len(charset)} chars")
 
     worker = BruteForceWorker(target_hash, salt, algo)
     total_combinations = sum(len(charset) ** length for length in range(1, max_length + 1))
-    print(f"🔢 Total combinations: {total_combinations:,}")
+    print(f"🔢 Total combinations to try: {total_combinations:,}")
 
-    # Initialize progress tracking
-    progress_tracker = ThreadSafeProgressTracker(total_combinations, num_threads, update_interval=0.5)
+    # Initialize enhanced progress tracking
+    progress_tracker = ThreadSafeProgressTracker(total_combinations, num_threads, update_interval=0.3)
     progress_monitor = ProgressMonitor(progress_tracker, stop_condition=lambda: worker.found)
 
     start_time = time.time()
-    batch_size = max(100, total_combinations // (num_threads * 10))  # Larger batches for basic version
+    batch_size = max(50, total_combinations // (num_threads * 20))  # Smaller batches for better progress granularity
 
     try:
         # Start progress monitoring
         progress_monitor.start()
-
+        
         with ThreadPoolExecutor(max_workers=num_threads) as executor:
             futures = []
+            processed_count = 0
 
             for length in range(1, max_length + 1):
                 if worker.found:
                     break
 
-                print(f"\n🔍 Processing length {length}...")
+                print(f"\n🔍 Trying passwords of length {length}...")
 
                 # Generate password batches
                 password_batch = []
@@ -214,7 +280,7 @@ def brute_force_attack_threaded(target_hash: str, salt: str | None = None, algo:
                     future = executor.submit(worker.test_password_batch, password_batch)
                     futures.append(future)
 
-            # Wait for completion with progress updates
+            # Wait for completion with real-time progress updates
             for future in as_completed(futures):
                 if worker.found:
                     # Cancel remaining futures for faster cleanup
@@ -222,10 +288,12 @@ def brute_force_attack_threaded(target_hash: str, salt: str | None = None, algo:
                         if not f.done():
                             f.cancel()
                     break
-
+                
                 # Update progress with completed work
-                result, batch_attempts = future.result()
-                progress_tracker.update(batch_attempts)
+                result = future.result()
+                if result:
+                    _, batch_attempts = result
+                    progress_tracker.update(batch_attempts)
 
     except KeyboardInterrupt:
         print("\n⚠️  Attack interrupted by user.")
@@ -242,152 +310,18 @@ def brute_force_attack_threaded(target_hash: str, salt: str | None = None, algo:
         print(f"\n✅ PASSWORD CRACKED: '{worker.result}'")
         print(f"⏱️  Time: {elapsed:.2f} seconds")
         print(f"🔢 Attempts: {final_stats['attempts']:,}")
-        print(f"⚡ Average rate: {final_stats['average_rate']:.0f} passwords/sec")
-        print(f"🧵 Threads: {num_threads}")
+        print(f"⚡ Average rate: {final_stats['average_rate']:.0f} passwords/sec across {num_threads} threads")
         return worker.result
     else:
         print(f"\n❌ Attack completed without success")
-        print(f"⏱️  Time: {elapsed:.2f} seconds")
+        print(f"⏱️  Time: {elapsed:.2f} seconds") 
         print(f"🔢 Total attempts: {final_stats['attempts']:,}")
         return None
-
-
-def brute_force_attack_enhanced(target_hash: str, salt: str | None = None, algo: str = 'sha256',
-                               max_length: int = 4, charset: str | None = None, num_threads: int = 4):
-    """
-    Enhanced multithreaded brute-force attack with advanced progress indicators and optimizations.
-
-    Args:
-        target_hash: The hash to crack
-        salt: Salt for the hash (required for SHA-256)
-        algo: Algorithm used ('sha256' or 'bcrypt')
-        max_length: Maximum password length to try
-        charset: Character set to use (default: lowercase letters + digits)
-        num_threads: Number of threads to use
-
-    Returns:
-        Cracked password or None if not found
-    """
-    if charset is None:
-        charset = string.ascii_lowercase + string.digits
-
-    print(f"🌟 Starting ENHANCED multithreaded brute-force attack")
-    print(f"🧵 Threads: {num_threads} | 📏 Max length: {max_length} | 🔤 Charset: {len(charset)} chars")
-
-    worker = BruteForceWorker(target_hash, salt, algo)
-    total_combinations = sum(len(charset) ** length for length in range(1, max_length + 1))
-
-    print(f"🔢 Total combinations: {total_combinations:,}")
-
-    # Estimate time based on combinations
-    if total_combinations < 1000:
-        estimate = "⚡ Very fast (< 1 second)"
-    elif total_combinations < 100000:
-        estimate = "🚀 Fast (few seconds)"
-    elif total_combinations < 1000000:
-        estimate = "⏳ Moderate (may take minutes)"
-    else:
-        estimate = "🐌 Slow (may take a long time)"
-
-    print(f"⏱️  Estimated time: {estimate}")
-
-    # Initialize advanced progress tracking with faster updates
-    progress_tracker = ThreadSafeProgressTracker(total_combinations, num_threads, update_interval=0.2)
-    progress_monitor = ProgressMonitor(progress_tracker, stop_condition=lambda: worker.found)
-
-    start_time = time.time()
-    # Smaller batches for smoother progress updates
-    batch_size = max(25, min(500, total_combinations // (num_threads * 40)))
-
-    print(f"📦 Using batch size: {batch_size} for optimal progress tracking")
-
-    try:
-        # Start progress monitoring
-        progress_monitor.start()
-
-        with ThreadPoolExecutor(max_workers=num_threads) as executor:
-            futures = []
-
-            for length in range(1, max_length + 1):
-                if worker.found:
-                    break
-
-                print(f"\n📐 Processing length {length}...")
-
-                # Generate password batches
-                password_batch = []
-                for candidate in itertools.product(charset, repeat=length):
-                    if worker.found:
-                        break
-
-                    password = ''.join(candidate)
-                    password_batch.append(password)
-
-                    # When batch is full, submit to thread pool
-                    if len(password_batch) >= batch_size:
-                        future = executor.submit(worker.test_password_batch, password_batch.copy())
-                        futures.append(future)
-                        password_batch = []
-
-                # Submit remaining passwords in the batch
-                if password_batch and not worker.found:
-                    future = executor.submit(worker.test_password_batch, password_batch)
-                    futures.append(future)
-
-            # Wait for completion and collect results
-            for future in as_completed(futures):
-                if worker.found:
-                    # Password found! Cancel remaining futures
-                    for f in futures:
-                        if not f.done():
-                            f.cancel()
-                    break
-
-                # Update progress with completed work
-                result, attempts = future.result()
-                progress_tracker.update(attempts)
-
-    except KeyboardInterrupt:
-        print("\n⚠️  Attack interrupted by user.")
-        return None
-    finally:
-        # Stop progress monitoring
-        progress_monitor.stop()
-
-    # Calculate final statistics
-    elapsed = time.time() - start_time
-    final_stats = progress_tracker.get_final_stats()
-
-    # Clear progress line
-    print(f"\r{' ' * 100}")
-
-    if worker.result:
-        print(f"✅ PASSWORD CRACKED: '{worker.result}'")
-        print(f"🎯 Attempts: {final_stats['attempts']:,}")
-        print(f"⏱️  Time: {elapsed:.2f} seconds")
-        print(f"🚀 Average rate: {final_stats['average_rate']:.0f} passwords/second")
-        print(f"🧵 Threads used: {num_threads}")
-        print(f"💯 Search completion: {final_stats['completion_rate']*100:.1f}%")
-        return worker.result
-    else:
-        print(f"❌ Password not found after exhaustive search")
-        print(f"🎯 Total attempts: {final_stats['attempts']:,}")
-        print(f"⏱️  Time: {elapsed:.2f} seconds")
-        print(f"🚀 Average rate: {final_stats['average_rate']:.0f} passwords/second")
-        print(f"🧵 Threads used: {num_threads}")
-        return None
-
 
 if __name__ == "__main__":
     # Test with a simple password
     test_password = "abc"
     result = hash_password_sha256(test_password)
     print(f"Testing with password: {test_password}")
-
-    print("\n=== Testing Single-threaded ===")
     cracked = brute_force_attack(result['hash'], result['salt'], 'sha256', 3)
-    print(f"Result: {cracked}")
-
-    print("\n=== Testing Enhanced Multithreaded ===")
-    cracked = brute_force_attack_enhanced(result['hash'], result['salt'], 'sha256', 3, None, 4)
     print(f"Result: {cracked}")
