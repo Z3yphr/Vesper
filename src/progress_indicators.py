@@ -111,9 +111,12 @@ class ThreadSafeProgressTracker:
                 use_progress_bar = self.total_work > 1000
 
             if use_progress_bar and self.total_work > 0:
-                return self._generate_progress_bar(elapsed)
+                display = self._generate_progress_bar(elapsed)
             else:
-                return self._generate_spinner(elapsed)
+                display = self._generate_spinner(elapsed)
+
+            # Pad the display to clear any leftover characters from previous output
+            return display.ljust(100)
 
     def _generate_progress_bar(self, elapsed: float) -> str:
         """Generate a detailed progress bar."""

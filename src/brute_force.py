@@ -40,38 +40,39 @@ def brute_force_attack(target_hash: str, salt: str | None = None, algo: str = 's
 
     attempts = 0
     total_combinations = sum(len(charset) ** length for length in range(1, max_length + 1))
-
     print(f"🔢 Total combinations: {total_combinations:,}")
 
     # Use appropriate progress tracking
-    progress_tracker = None
-    progress_monitor = None
     spinner = None
-
-    if total_combinations > 1000:
-        progress_tracker = ThreadSafeProgressTracker(total_combinations, 1, update_interval=1.0)
-        progress_monitor = ProgressMonitor(progress_tracker)
-        progress_monitor.start()
-        use_progress = True
-    else:
-        spinner = SimpleSpinner("Testing passwords")
-        use_progress = False
+    use_progress = total_combinations > 1000
 
     start_time = time.time()
 
     try:
+        attempts = 0
+        completed_total = 0
+        length_progress_monitor = None  # Ensure always defined
         for length in range(1, max_length + 1):
             length_combinations = len(charset) ** length
             print(f"\n🔍 Trying passwords of length {length} ({length_combinations:,} combinations)")
 
+            # Always use per-length progress tracker
+            length_progress_tracker = ThreadSafeProgressTracker(length_combinations, 1, update_interval=0.1)
+            length_progress_monitor = ProgressMonitor(length_progress_tracker)
+            length_progress_monitor.start()
+
             for i, candidate in enumerate(itertools.product(charset, repeat=length)):
                 password = ''.join(candidate)
                 attempts += 1
+                completed_total += 1
 
                 # Check if password matches
                 if algo == 'sha256' and salt:
                     if verify_password_sha256(password, salt, target_hash):
                         elapsed = time.time() - start_time
+                        length_progress_monitor.stop()
+                        sys.stdout.write('\r' + ' ' * 120 + '\r')
+                        sys.stdout.flush()
                         print(f"\n✅ PASSWORD CRACKED: '{password}'")
                         print(f"⏱️  Time: {elapsed:.2f} seconds")
                         print(f"🔢 Attempts: {attempts:,}")
@@ -79,27 +80,35 @@ def brute_force_attack(target_hash: str, salt: str | None = None, algo: str = 's
                 elif algo == 'bcrypt' and bcrypt_available and verify_password_bcrypt is not None:
                     if verify_password_bcrypt(password, target_hash):
                         elapsed = time.time() - start_time
+                        length_progress_monitor.stop()
+                        sys.stdout.write('\r' + ' ' * 120 + '\r')
+                        sys.stdout.flush()
                         print(f"\n✅ PASSWORD CRACKED: '{password}'")
                         print(f"⏱️  Time: {elapsed:.2f} seconds")
                         print(f"🔢 Attempts: {attempts:,}")
                         return password
 
                 # Update progress
-                if use_progress and progress_tracker:
-                    if attempts % 100 == 0:  # Update every 100 attempts
-                        progress_tracker.update(100)
-                elif not use_progress and spinner:
-                    if attempts % 50 == 0:  # Update spinner every 50 attempts
-                        spinner.tick()
+                length_progress_tracker.update(1)
+
+            # End of this length
+            length_progress_monitor.stop()
+            sys.stdout.write('\r' + ' ' * 120 + '\r')
+            sys.stdout.flush()
+            print(f"Length {length} done: {length_combinations:,} tried.")
 
     except KeyboardInterrupt:
+        if length_progress_monitor:
+            length_progress_monitor.stop()
+        sys.stdout.write('\r' + ' ' * 120 + '\r')
+        sys.stdout.flush()
         print("\n⚠️  Attack interrupted by user.")
         return None
     finally:
-        if use_progress and progress_monitor:
-            progress_monitor.stop()
-        elif not use_progress and spinner:
-            spinner.finish("Attack completed")
+        if length_progress_monitor:
+            length_progress_monitor.stop()
+            sys.stdout.write('\r' + ' ' * 120 + '\r')
+            sys.stdout.flush()
 
     elapsed = time.time() - start_time
     print(f"\n❌ Attack completed without success")
