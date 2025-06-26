@@ -14,7 +14,7 @@ except ImportError:
 from src.hash_db import init_db, store_hash, get_hash
 from src.caesar_cipher import caesar_encrypt, caesar_decrypt
 from src.vigenere_cipher import vigenere_encrypt, vigenere_decrypt
-from src.brute_force import brute_force_attack
+from src.brute_force import brute_force_attack, brute_force_attack_threaded
 from src.dictionary_attack import dictionary_attack
 
 def attack_menu():
@@ -23,8 +23,10 @@ Brute-force/Dictionary Attacks
 ------------------------------
 1. Dictionary attack on stored user hash
 2. Brute-force attack on stored user hash
-3. Dictionary attack on custom hash
-4. Brute-force attack on custom hash
+3. Multithreaded brute-force attack on stored user hash (FASTER)
+4. Dictionary attack on custom hash
+5. Brute-force attack on custom hash
+6. Multithreaded brute-force attack on custom hash (FASTER)
 0. Back to main menu
 """)
     choice = input("Select an option: ")
@@ -84,6 +86,50 @@ Brute-force/Dictionary Attacks
         input("Press Enter to continue...")
 
     elif choice == '3':
+        username = input("Enter username to attack: ")
+        if not username:
+            print("Username cannot be blank.")
+            input("Press Enter to continue...")
+            return
+
+        entry = get_hash(username)
+        if not entry:
+            print("No hash found for that username.")
+            input("Press Enter to continue...")
+            return
+
+        try:
+            max_length = int(input("Enter maximum password length to try (recommended: 3-4): "))
+            if max_length < 1 or max_length > 6:
+                print("Maximum length should be between 1 and 6 for reasonable time.")
+                input("Press Enter to continue...")
+                return
+        except ValueError:
+            print("Invalid length.")
+            input("Press Enter to continue...")
+            return
+
+        try:
+            num_threads = int(input("Enter number of threads (recommended: 4-8): "))
+            if num_threads < 1 or num_threads > 16:
+                print("Number of threads should be between 1 and 16.")
+                input("Press Enter to continue...")
+                return
+        except ValueError:
+            print("Invalid number of threads.")
+            input("Press Enter to continue...")
+            return
+
+        print(f"Attacking {entry['algo']} hash for user '{username}' with {num_threads} threads...")
+        print(f"Warning: This may take a very long time for length > 4!")
+        result = brute_force_attack_threaded(entry['hash'], entry.get('salt'), entry['algo'], max_length, None, num_threads)
+        if result:
+            print(f"SUCCESS! Password is: {result}")
+        else:
+            print("FAILED! Password not found.")
+        input("Press Enter to continue...")
+
+    elif choice == '4':
         hash_input = input("Enter hash to attack: ")
         if not hash_input:
             print("Hash cannot be blank.")
@@ -111,7 +157,7 @@ Brute-force/Dictionary Attacks
             print("FAILED! Password not found in dictionary.")
         input("Press Enter to continue...")
 
-    elif choice == '4':
+    elif choice == '5':
         hash_input = input("Enter hash to attack: ")
         if not hash_input:
             print("Hash cannot be blank.")
@@ -145,6 +191,57 @@ Brute-force/Dictionary Attacks
 
         print(f"Warning: This may take a very long time for length > 4!")
         result = brute_force_attack(hash_input, salt, algo, max_length)
+        if result:
+            print(f"SUCCESS! Password is: {result}")
+        else:
+            print("FAILED! Password not found.")
+        input("Press Enter to continue...")
+
+    elif choice == '6':
+        hash_input = input("Enter hash to attack: ")
+        if not hash_input:
+            print("Hash cannot be blank.")
+            input("Press Enter to continue...")
+            return
+
+        algo = input("Enter algorithm (sha256/bcrypt): ").lower()
+        if algo not in ['sha256', 'bcrypt']:
+            print("Invalid algorithm. Use 'sha256' or 'bcrypt'.")
+            input("Press Enter to continue...")
+            return
+
+        salt = None
+        if algo == 'sha256':
+            salt = input("Enter salt (hex): ")
+            if not salt:
+                print("Salt is required for SHA-256.")
+                input("Press Enter to continue...")
+                return
+
+        try:
+            max_length = int(input("Enter maximum password length to try (recommended: 3-4): "))
+            if max_length < 1 or max_length > 6:
+                print("Maximum length should be between 1 and 6 for reasonable time.")
+                input("Press Enter to continue...")
+                return
+        except ValueError:
+            print("Invalid length.")
+            input("Press Enter to continue...")
+            return
+
+        try:
+            num_threads = int(input("Enter number of threads (recommended: 4-8): "))
+            if num_threads < 1 or num_threads > 16:
+                print("Number of threads should be between 1 and 16.")
+                input("Press Enter to continue...")
+                return
+        except ValueError:
+            print("Invalid number of threads.")
+            input("Press Enter to continue...")
+            return
+
+        print(f"Warning: This may take a very long time for length > 4!")
+        result = brute_force_attack_threaded(hash_input, salt, algo, max_length, None, num_threads)
         if result:
             print(f"SUCCESS! Password is: {result}")
         else:
